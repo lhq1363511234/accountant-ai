@@ -311,7 +311,7 @@ pre.doc{white-space:pre-wrap;max-height:340px;overflow:auto;background:#fff;bord
   .page-head{gap:10px;align-items:flex-start;flex-wrap:wrap;margin-bottom:16px}.page-head>div{min-width:0;flex:1}.page-head>.btn{flex:none}.filename-context{max-width:100%;font-size:13px;overflow-wrap:anywhere}
   .card{padding:16px;border-radius:14px}.main h1{font-size:22px}.main h2{font-size:18px}.stat{min-width:0;padding:13px}.stat-val{font-size:20px}.quota-card{padding:14px}.task-section{padding:15px}
   .task-card{width:100%;overflow:hidden}.task-actions .btn{min-height:44px}.section-head{align-items:flex-start}.section-head>div{min-width:0}.section-head p{line-height:1.45}
-  .result-tabs{top:128px;margin-left:-4px;margin-right:-4px;overflow-x:auto}.result-tab{padding:7px 8px;white-space:nowrap}.result-tab span{margin-left:1px}.result-panel>.card,.result-panel .card{margin-bottom:12px}
+  .result-tabs{top:12px;margin-left:-4px;margin-right:-4px;overflow-x:auto}.result-tab{padding:7px 8px;white-space:nowrap}.result-tab span{margin-left:1px}.result-panel>.card,.result-panel .card{margin-bottom:12px}
   .action-grid{display:grid;grid-template-columns:1fr 1fr}.action-grid .btn{justify-content:center}.review-tools{display:block}.search-box{max-width:none}.filter-group{margin-top:10px}.filter-btn{flex:1}.review-counter{display:none}
   .table-wrap{max-width:100%;-webkit-overflow-scrolling:touch}.btn{min-height:44px}.btn.sm{min-height:38px}.results-table{min-width:0}.results-scroll{overflow:visible;border:0;max-height:none}
   .results-table,.results-table tbody,.results-table tr,.results-table td{display:block;width:100%}.results-table thead{display:none}
