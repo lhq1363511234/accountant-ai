@@ -571,7 +571,11 @@ def results(job_id):
           <div class='table-wrap results-scroll'><table class='tbl results-table'><thead><tr><th>日期</th><th>摘要</th><th>对方</th><th>金额</th><th>现金流分类</th><th>依据</th><th>置信</th><th>来源</th></tr></thead>
           <tbody>{''.join(trs)}</tbody></table></div>
           <div class='empty-filter' data-empty-filter hidden>没有符合条件的流水，请更换筛选或关键词。</div>
-          <button class='btn load-more' type='button' data-load-more hidden>再显示 20 笔</button>
+          <nav class='result-pagination' data-result-pagination aria-label='流水分页'>
+            <button class='btn' type='button' data-page-prev>上一页</button>
+            <span data-page-info aria-live='polite'>第 1 / 1 页</span>
+            <button class='btn' type='button' data-page-next>下一页</button>
+          </nav>
           <div class='save-bar'><span class='muted'>修改分类后记得保存</span><button class='btn primary' type='submit'>保存修改并学习</button></div>
         </form>
       </div>
