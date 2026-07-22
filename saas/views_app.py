@@ -20,6 +20,7 @@ import engine
 import charts
 import billing
 import ai_settings
+import financial_skills
 from theme import app_shell
 from models import db, User, Job, current_period
 
@@ -179,11 +180,22 @@ def upload():
     q = _quota()
     if request.method == "POST":
         return _handle_upload()
+    skill_cards = "".join(
+        f"<label class='finance-skill-card'><input type='checkbox' name='financial_skills' value='{key}' "
+        f"{'checked' if key in financial_skills.DEFAULT_SKILLS else ''} {'disabled' if key == 'cashflow' else ''}>"
+        f"<span><b>{html.escape(meta['name'])}</b><small>{html.escape(meta['tag'])}</small>"
+        f"<em>{html.escape(meta['desc'])}</em></span></label>"
+        for key, meta in financial_skills.SKILLS.items()
+    )
     body = f"""
-    <div class='page-head'><h1>上传处理</h1></div>
+    <div class='page-head'><div><h1>新建财务分析</h1><p class='muted'>选择资料和本次希望完成的财务工作</p></div></div>
     <div class='card'>
       <form action='{P}/app/upload' method='post' enctype='multipart/form-data'>
-        <h2>选择文件（可多选）</h2>
+        <h2>1. 选择财务处理 Skill</h2>
+        <p class='muted'>现金流分类作为基础能力始终启用；可按本次任务组合专项分析。</p>
+        <input type='hidden' name='financial_skills' value='cashflow'>
+        <div class='finance-skill-grid'>{skill_cards}</div>
+        <h2 style='margin-top:26px'>2. 上传资料（可多选）</h2>
         <p class='muted'>表格：.xlsx / .xls / .csv；文档：.txt / .md / .docx / .pdf。多个表格自动合并；文档作为分类参考材料。单次最多 {q['max_rows_per_job']} 行。</p>
         <div class='drop'><input type='file' name='file' accept='.xlsx,.xls,.csv,.txt,.md,.docx,.pdf' multiple required>
           <div class='muted file-names' data-file-names>选择后将显示文件名</div></div>
@@ -205,6 +217,7 @@ def _err_page(msg: str):
 
 
 def _handle_upload():
+    selected_skills = financial_skills.normalize_skill_ids(request.form.getlist("financial_skills"))
     files = [f for f in request.files.getlist("file") if f and f.filename]
     if not files:
         return _err_page("没有选择文件。")
@@ -254,9 +267,10 @@ def _handle_upload():
             "id": job_id, "type": "document", "filename": filename,
             "files": [n for n, _ in saved], "paths": [str(p) for _, p in saved],
             "doc_text": supporting_docs[:120000], "created_at": time.time(), "chat": [],
+            "financial_skills": selected_skills,
         }
         try:
-            skill = engine.get_accounting_skill(g.user.custom_skill or "")
+            skill = financial_skills.compose_skill(selected_skills, g.user.custom_skill or "")
             ans = engine.deepseek_answer(config.DOCUMENT_DEFAULT_QUESTION, engine.job_ai_context(data), skill)
         except Exception as e:
             ans = f"AI 自动分析失败：{e}\n\n你可以稍后重新发送问题。"
@@ -296,6 +310,7 @@ def _handle_upload():
         "files": [n for n, _ in saved], "paths": [str(p) for _, p in saved],
         "columns": cols, "rows": df.to_dict(orient="records"),
         "supporting_docs": supporting_docs[:120000], "created_at": time.time(),
+        "financial_skills": selected_skills,
     }
     job = Job(id=job_id, user_id=g.user.id, type="table", filename=filename, status="created", row_count=len(df))
     job.set_data(data)
@@ -377,7 +392,8 @@ def classify(job_id):
     if not ok:
         return _err_page(why)
 
-    data = engine.classify_job(data, load_learned_rules(), g.user.custom_skill or "")
+    skill_prompt = financial_skills.compose_skill(data.get("financial_skills"), g.user.custom_skill or "")
+    data = engine.classify_job(data, load_learned_rules(), skill_prompt)
     job.set_data(data)
     job.status = "classified"
     db.session.commit()
@@ -412,6 +428,8 @@ def results(job_id):
 
     saved = request.args.get("saved")
     note = f"<div class='alert ok'>已保存修改，其中 {saved} 条已沉淀为你的学习规则，下次自动命中。</div>" if saved else ""
+    active_skill_names = financial_skills.skill_names(data.get("financial_skills"))
+    active_skills = "".join(f"<span class='chip skill-chip'>{html.escape(name)}</span>" for name in active_skill_names)
 
     # 汇总
     summary = {}
@@ -538,12 +556,16 @@ def results(job_id):
             f"<td data-label='来源' class='muted source-cell'>{html.escape(str(r.get('source','')))}</td></tr>"
         )
     review_total = sum(1 for r in results if r.get("review") or r.get("category") == "待确认")
-    report_names = ["现金流量表", "资金收支总览", "每日资金收支", "收入分类分析", "费用支出分析", "往来单位分析", "待复核流水", "多账户来源汇总"]
+    report_names = ["处理说明", "现金流量表", "资金收支总览", "每日资金收支", "收入分类分析", "费用支出分析", "往来单位分析", "待复核流水", "多账户来源汇总"]
+    selected_ids = financial_skills.normalize_skill_ids(data.get("financial_skills"))
+    optional_reports = {"reconciliation": "内部转账候选", "risk_review": "异常流水复核", "tax_review": "税费支出明细", "cashflow_health": "现金流健康度"}
+    report_names.extend(optional_reports[x] for x in selected_ids if x in optional_reports)
     report_pack = "".join(f"<span><i></i>{html.escape(name)}</span>" for name in report_names)
     body = f"""
     <div class='page-head result-head'><div><h1>分类结果</h1><p class='muted filename-context'>{html.escape(engine.display_filename(data))} · {len(results)} 行</p></div>
       <a class='btn primary desktop-only' href='{P}/app/job/{job_id}/export'>导出 Excel</a></div>
     {note}
+    <div class='active-skills-card'><strong>本次启用的财务 Skill</strong><div class='chips'>{active_skills}</div></div>
     <nav class='result-tabs' aria-label='结果页面分区'>
       <button type='button' class='result-tab active' data-result-tab='overview'>概览</button>
       <button type='button' class='result-tab' data-result-tab='charts'>可视化</button>
@@ -551,7 +573,7 @@ def results(job_id):
     </nav>
     <section class='result-panel active' data-result-panel='overview'>
       {cf_card}
-      <div class='card report-pack-card'><div class='section-head'><div><h3>财务报表包</h3><p class='muted'>本次流水可一次导出以下工作表，所有数据均可追溯到原始流水。</p></div><span class='report-count'>8 张</span></div><div class='report-pack-grid'>{report_pack}</div></div>
+      <div class='card report-pack-card'><div class='section-head'><div><h3>财务报表包</h3><p class='muted'>本次流水可一次导出以下工作表，所有数据均可追溯到原始流水。</p></div><span class='report-count'>{len(report_names)} 张</span></div><div class='report-pack-grid'>{report_pack}</div></div>
       <div class='card'><div class='section-head'><div><h3>分类汇总</h3><p class='muted'>先看整体结构，需要时再进入逐笔复核</p></div></div><div class='chips'>{chips}</div>
       <div class='action-grid'>
         <a class='btn primary' href='{P}/app/job/{job_id}/export'>导出 Excel</a>
@@ -597,7 +619,7 @@ def ask(job_id):
     if request.method == "POST":
         qtext = (request.form.get("question") or "").strip() or default_q
         try:
-            skill = engine.get_accounting_skill(g.user.custom_skill or "")
+            skill = financial_skills.compose_skill(data.get("financial_skills"), g.user.custom_skill or "")
             ans = engine.deepseek_answer(qtext, engine.job_ai_context(data), skill)
         except Exception as e:
             ans = f"AI 调用失败：{e}"
@@ -726,14 +748,19 @@ def skill():
         db.session.commit()
         return redirect(f"{P}/app/skill?saved=1")
     saved = "<div class='alert ok'>已保存你的会计口径 Skill。</div>" if request.args.get("saved") else ""
-    current = g.user.custom_skill or engine.get_accounting_skill("")
-    lock = "" if is_team else "<div class='alert warn'>自定义 Skill 是团队版功能。以下为系统默认口径，升级后可编辑。</div>"
+    current = g.user.custom_skill or ""
+    catalog = "".join(
+        f"<article class='finance-skill-info'><span>{html.escape(meta['tag'])}</span><h3>{html.escape(meta['name'])}</h3><p>{html.escape(meta['desc'])}</p></article>"
+        for meta in financial_skills.SKILLS.values()
+    )
+    lock = "" if is_team else "<div class='alert warn'>企业自定义会计口径是团队版功能；所有套餐均可使用下列系统财务 Skill。</div>"
     disabled = "" if is_team else "readonly"
     body = f"""
-    <div class='page-head'><h1>财务处理 Skill</h1></div>
+    <div class='page-head'><div><h1>财务处理 Skill</h1><p class='muted'>按任务组合专业财务处理能力，不再只做现金流分类</p></div></div>
     {saved}{lock}
+    <div class='finance-skill-catalog'>{catalog}</div>
     <div class='card'>
-      <p class='muted'>这是 AI 分类时遵守的会计口径说明。团队版可按贵司口径自定义，个人/专业版使用系统默认。</p>
+      <h2>企业自定义会计口径</h2><p class='muted'>可补充本企业特有的客户、供应商、内部账户和分类规则；优先级高于系统 Skill。</p>
       <form method='post'>
         <textarea name='skill' style='min-height:440px' {disabled}>{html.escape(current)}</textarea>
         {"<p style='margin-top:14px'><button class='btn primary' type='submit'>保存</button></p>" if is_team else ""}

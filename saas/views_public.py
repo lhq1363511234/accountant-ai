@@ -111,19 +111,23 @@ def landing():
     target_text = "进入工作台" if user else "免费开始处理"
     doc_icon = """<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M7 3h7l4 4v14H7z'/><path d='M14 3v5h5M10 12h5M10 16h5'/></svg>"""
     reports = [
-        ("现金流量表", "按经营、投资、筹资活动自动汇总，保留待确认项目。"),
-        ("资金收支总览", "集中查看流入、流出、净增加额、笔数和复核数量。"),
-        ("每日资金收支表", "按日期展示流入、流出、当日净额和累计净额。"),
-        ("收入分类分析", "按收入性质汇总金额，快速识别主要资金来源。"),
-        ("费用支出分析", "按支出类别形成费用结构表，辅助费用复核。"),
-        ("往来单位分析", "按客户、供应商和其他交易对手汇总收付款。"),
-        ("待复核流水表", "单独整理低置信度和待确认流水，方便集中处理。"),
-        ("多账户来源汇总", "多个银行账户或文件合并后仍可按来源追溯汇总。"),
+        ("现金流量表", "按经营、投资、筹资活动自动汇总，保留待确认项目。", "已上线"),
+        ("资金收支总览", "集中查看流入、流出、净增加额、笔数和复核数量。", "已上线"),
+        ("每日资金收支表", "按日期展示流入、流出、当日净额和累计净额。", "已上线"),
+        ("收入分类分析", "按收入性质汇总金额，快速识别主要资金来源。", "已上线"),
+        ("费用支出分析", "按支出类别形成费用结构表，辅助费用复核。", "已上线"),
+        ("往来单位分析", "按客户、供应商和其他交易对手汇总收付款。", "已上线"),
+        ("待复核流水表", "单独整理低置信度和待确认流水，方便集中处理。", "已上线"),
+        ("多账户来源汇总", "多个银行账户或文件合并后仍可按来源追溯汇总。", "已上线"),
+        ("内部转账候选", "识别同日同额正负流水，辅助确认账户调拨或冲正。", "可选 Skill"),
+        ("异常流水复核", "筛查重复、大额整数、低置信度等需要人工确认的交易。", "可选 Skill"),
+        ("税费支出明细", "归集税费、社保、公积金候选流水，结合凭证进一步复核。", "可选 Skill"),
+        ("现金流健康度", "从净额、波动、覆盖天数和待复核量观察资金压力。", "可选 Skill"),
     ]
     report_cards = "".join(
-        f"<article class='report-card'><div class='report-icon'>{doc_icon}</div><div><span class='live-tag'>已上线</span>"
+        f"<article class='report-card'><div class='report-icon'>{doc_icon}</div><div><span class='live-tag'>{html.escape(tag)}</span>"
         f"<h3>{html.escape(title)}</h3><p>{html.escape(desc)}</p></div></article>"
-        for title, desc in reports
+        for title, desc, tag in reports
     )
     capabilities = [
         ("自动识别复杂表头", "支持银行导出的 Excel、CSV，自动查找真实表头并清理前置说明行。"),
@@ -143,7 +147,7 @@ def landing():
     <span class='eyebrow'>AI 财务流水分析与报表平台</span>
     <h1>银行流水自动整理<span>多维财务报表一次生成</span></h1>
     <p class='hero-lead'>上传银行流水，自动完成字段识别、收支归类、现金流分类、风险复核和多维财务报表。财务人员保留判断权，系统负责第一轮整理。</p>
-    <ul class='hero-points'><li>支持 Excel / CSV / 多账户合并</li><li>规则优先，AI 补充判断依据</li><li>一次导出多张可复核财务表</li></ul>
+    <ul class='hero-points'><li>支持 Excel / CSV / 多账户合并</li><li>按任务组合 7 类财务处理 Skill</li><li>一次导出多张可复核财务表</li></ul>
     <div class='hero-actions'><a class='btn primary lg' href='{target}'>{target_text}</a><a class='btn lg' href='#reports'>查看可生成的报表</a></div>
     <p class='hero-note'>免费版每月 {config.PLANS['free']['rows_per_month']} 行 · 无需信用卡 · 结果支持人工复核</p>
   </div>
@@ -156,13 +160,13 @@ def landing():
 </div></section>
 
 <section class='trust-strip'><div class='wrap trust-grid'>
-  <div><b>23 类</b><span>现金流项目口径</span></div><div><b>8+ 张</b><span>自动生成财务表</span></div>
+  <div><b>23 类</b><span>现金流项目口径</span></div><div><b>7 类</b><span>可组合财务 Skill</span></div>
   <div><b>多账户</b><span>合并与来源追溯</span></div><div><b>可复核</b><span>每笔保留依据与置信度</span></div>
 </div></section>
 
 <section class='section reports-section' id='reports'><div class='wrap'>
   <div class='section-intro'><span class='eyebrow'>报表中心</span><h2>不止现金流量表，一份流水生成多维财务分析</h2>
-  <p>所有报表都来自上传流水和已确认分类，不虚构银行流水无法支持的资产负债或利润数据。</p></div>
+  <p>基础报表由每次任务生成；内部转账、异常复核、税费和现金流健康度等专项表按所选 Skill 生成。系统不虚构流水无法支持的资产负债或利润数据。</p></div>
   <div class='report-grid'>{report_cards}</div>
   <div class='report-cta'><div><strong>一次导出，形成完整财务工作底稿</strong><span>包含分类结果、处理文件、分类汇总及多张分析表。</span></div><a class='btn primary' href='{target}'>上传流水生成报表</a></div>
 </div></section>
@@ -184,7 +188,7 @@ def landing():
 </div></section>
 
 <section class='section role-section'><div class='wrap role-grid'>
-  <div class='role-copy'><span class='eyebrow'>适用场景</span><h2>让财务人员把时间留给判断，而不是复制粘贴</h2><p>适用于月末流水整理、现金流编制、资金收支复盘、费用结构检查和往来单位分析。</p></div>
+  <div class='role-copy'><span class='eyebrow'>适用场景</span><h2>让财务人员把时间留给判断，而不是复制粘贴</h2><p>适用于月末流水整理、现金流编制、资金收支复盘、费用结构检查、往来分析、对账和异常复核。</p></div>
   <div class='role-cards'><article><h3>企业财务</h3><p>多账户流水合并、月度资金分析、异常流水复核。</p></article><article><h3>代账会计</h3><p>批量整理客户流水，统一分类口径并导出工作底稿。</p></article><article><h3>财务负责人</h3><p>快速查看资金流入流出、支出结构和重点往来单位。</p></article></div>
 </div></section>
 

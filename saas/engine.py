@@ -18,6 +18,7 @@ import requests
 
 import config
 import ai_settings
+import financial_skills
 
 
 def current_ai_settings() -> Dict[str, Any]:
@@ -829,6 +830,10 @@ def export_excel(job: Dict[str, Any], out_path: Path) -> Path:
         out_rows.append(x)
     df = pd.DataFrame(out_rows)
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+        selected = financial_skills.normalize_skill_ids(job.get("financial_skills"))
+        pd.DataFrame({"本次启用 Skill": financial_skills.skill_names(selected),
+                      "处理说明": [financial_skills.SKILLS[x]["desc"] for x in selected]}).to_excel(
+            writer, sheet_name="处理说明", index=False)
         df.to_excel(writer, sheet_name="分类结果", index=False)
         if job.get("files"):
             pd.DataFrame({"本次处理文件": job.get("files", [])}).to_excel(writer, sheet_name="处理文件", index=False)
@@ -930,6 +935,48 @@ def export_excel(job: Dict[str, Any], out_path: Path) -> Path:
             for name, v in source_files.items()
         ]
         pd.DataFrame(source_rows).to_excel(writer, sheet_name="多账户来源汇总", index=False)
+
+        # 按所选 Skill 增加专项工作表；这些是规则化提示，不替代会计确认。
+        if "reconciliation" in selected:
+            candidates = []
+            seen = {}
+            for raw, result in zip(rows, results):
+                ctx = result.get("ctx") or {}
+                amount = float(ctx.get("signed_amount") or 0)
+                key = (round(abs(amount), 2), str(ctx.get("date", ""))[:10])
+                if amount and key in seen and seen[key]["amount"] * amount < 0:
+                    candidates.append({"匹配金额": abs(amount), "日期": ctx.get("date", ""), "当前摘要": ctx.get("summary", ""), "对方": ctx.get("counterparty", ""), "说明": "同日同额正负流水，疑似内部调拨/冲正，需核实账户"})
+                elif amount:
+                    seen[key] = {"amount": amount, "summary": ctx.get("summary", "")}
+            pd.DataFrame(candidates, columns=["匹配金额", "日期", "当前摘要", "对方", "说明"]).to_excel(writer, sheet_name="内部转账候选", index=False)
+        if "risk_review" in selected:
+            risk = []
+            signatures = {}
+            for raw, result in zip(rows, results):
+                ctx = result.get("ctx") or {}
+                amount = float(ctx.get("signed_amount") or 0)
+                sig = (str(ctx.get("date", ""))[:10], round(abs(amount), 2), str(ctx.get("counterparty", "")).strip())
+                reasons = []
+                if sig in signatures: reasons.append("同日同金额同对方重复候选")
+                if amount and abs(amount) >= 100000 and abs(amount) % 1000 == 0: reasons.append("大额整数交易")
+                if result.get("review") or result.get("category") == "待确认": reasons.append("AI 低置信度/待确认")
+                if reasons:
+                    risk.append({"日期": ctx.get("date", ""), "摘要": ctx.get("summary", ""), "对方": ctx.get("counterparty", ""), "金额": amount, "风险提示": "；".join(reasons), "需人工确认": "是"})
+                signatures[sig] = True
+            pd.DataFrame(risk, columns=["日期", "摘要", "对方", "金额", "风险提示", "需人工确认"]).to_excel(writer, sheet_name="异常流水复核", index=False)
+        if "tax_review" in selected:
+            tax_words = "税|税费|增值税|所得税|附加税|印花税|个税|社保|公积金|税务"
+            tax_rows = []
+            for raw, result in zip(rows, results):
+                ctx = result.get("ctx") or {}
+                text = " ".join(str(ctx.get(k, "")) for k in ("summary", "counterparty", "remark"))
+                if re.search(tax_words, text, re.I):
+                    tax_rows.append({"日期": ctx.get("date", ""), "摘要": ctx.get("summary", ""), "对方": ctx.get("counterparty", ""), "金额": ctx.get("signed_amount", ""), "识别类型": "税费/社保/公积金候选", "复核提示": "结合申报表或完税凭证确认"})
+            pd.DataFrame(tax_rows, columns=["日期", "摘要", "对方", "金额", "识别类型", "复核提示"]).to_excel(writer, sheet_name="税费支出明细", index=False)
+        if "cashflow_health" in selected:
+            health = an
+            health_rows = [{"指标": "现金流入总额", "数值": health["total_in"]}, {"指标": "现金流出总额", "数值": health["total_out"]}, {"指标": "现金净增加额", "数值": health["net_increase"]}, {"指标": "日期覆盖天数", "数值": len(health["trend"])}, {"指标": "待复核笔数", "数值": health["review_count"]}, {"指标": "提示", "数值": "仅基于已上传流水，不能替代预算或正式预测"}]
+            pd.DataFrame(health_rows).to_excel(writer, sheet_name="现金流健康度", index=False)
 
         # 基础工作簿美化：冻结表头、筛选、统一表头与自适应列宽。
         from openpyxl.styles import Font, PatternFill, Alignment

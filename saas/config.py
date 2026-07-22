@@ -154,7 +154,7 @@ PLANS = {
         "price_month": 0,
         "rows_per_month": 200,
         "max_rows_per_job": 200,
-        "features": ["每月 200 行流水额度", "现金流量表 23 类分类", "8+ 张财务分析表", "Excel 报表包导出", "可切换大模型智能分类"],
+        "features": ["每月 200 行流水额度", "现金流量表 23 类分类", "7 类可组合财务 Skill", "Excel 报表包导出", "可切换大模型智能分类"],
     },
     "pro": {
         "code": "pro",

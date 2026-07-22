@@ -56,3 +56,26 @@ def test_excel_export_contains_financial_report_pack(tmp_path: Path):
     sheets = set(load_workbook(out, read_only=True).sheetnames)
     assert {"分类结果", "现金流量表", "资金收支总览", "每日资金收支", "收入分类分析",
             "费用支出分析", "往来单位分析", "待复核流水", "多账户来源汇总"} <= sheets
+
+
+def test_financial_skill_selection_composes_specialized_rules():
+    import financial_skills
+    selected = financial_skills.normalize_skill_ids(["risk_review", "tax_review"])
+    assert selected[0] == "cashflow"
+    prompt = financial_skills.compose_skill(selected)
+    assert "异常流水复核" in prompt
+    assert "税费与合规支出" in prompt
+
+
+def test_excel_export_adds_selected_skill_sheets(tmp_path: Path):
+    from openpyxl import load_workbook
+    job = {
+        "rows": [{"来源文件": "bank.csv", "日期": "2026-01-01", "摘要": "社保缴款", "对方": "社保中心", "金额": -100}],
+        "files": ["bank.csv"],
+        "financial_skills": ["cashflow", "reconciliation", "risk_review", "tax_review", "cashflow_health"],
+        "results": [{"category": "支付的各项税费", "reason": "社保", "confidence": 0.9,
+                     "review": False, "source": "规则", "ctx": {"date": "2026-01-01", "summary": "社保缴款", "counterparty": "社保中心", "remark": "", "signed_amount": -100}}],
+    }
+    out = engine.export_excel(job, tmp_path / "selected.xlsx")
+    sheets = set(load_workbook(out, read_only=True).sheetnames)
+    assert {"处理说明", "内部转账候选", "异常流水复核", "税费支出明细", "现金流健康度"} <= sheets
