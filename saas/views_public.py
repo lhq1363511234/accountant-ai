@@ -107,51 +107,90 @@ def _send_registration_code(email: str, password: str, company: str) -> tuple[bo
 @public.route("/")
 def landing():
     user = _current_user()
-    feats = [
-        ("🤖", "AI 逐行分类", "结合规则引擎与管理员配置的大模型，银行流水逐行判定现金流量表项目，给出依据与置信度。"),
-        ("📊", "现金流量表 23 类", "严格按《企业会计准则第31号》经营/投资/筹资口径，覆盖 23 个现金流项目。"),
-        ("📎", "多文件合并", "多个账户流水一次上传合并处理，合同/回单/说明可作为分类依据一起分析。"),
-        ("✅", "人工复核优先", "低置信度自动标记待复核，会计确认一次即沉淀为规则，越用越准。"),
-        ("📤", "一键导出台账", "分类结果、判断依据、汇总表导出 Excel，直接用于编表和归档。"),
-        ("🔒", "数据自主可控", "文件与结果仅保存在你的服务器，按账号隔离，互不可见。"),
+    target = f"{P}/app" if user else f"{P}/register"
+    target_text = "进入工作台" if user else "免费开始处理"
+    doc_icon = """<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M7 3h7l4 4v14H7z'/><path d='M14 3v5h5M10 12h5M10 16h5'/></svg>"""
+    reports = [
+        ("现金流量表", "按经营、投资、筹资活动自动汇总，保留待确认项目。"),
+        ("资金收支总览", "集中查看流入、流出、净增加额、笔数和复核数量。"),
+        ("每日资金收支表", "按日期展示流入、流出、当日净额和累计净额。"),
+        ("收入分类分析", "按收入性质汇总金额，快速识别主要资金来源。"),
+        ("费用支出分析", "按支出类别形成费用结构表，辅助费用复核。"),
+        ("往来单位分析", "按客户、供应商和其他交易对手汇总收付款。"),
+        ("待复核流水表", "单独整理低置信度和待确认流水，方便集中处理。"),
+        ("多账户来源汇总", "多个银行账户或文件合并后仍可按来源追溯汇总。"),
     ]
-    feat_cards = "".join(
-        f"<div class='card feat'><div class='ic'>{i}</div><h3>{html.escape(t)}</h3><p>{html.escape(d)}</p></div>"
-        for i, t, d in feats
+    report_cards = "".join(
+        f"<article class='report-card'><div class='report-icon'>{doc_icon}</div><div><span class='live-tag'>已上线</span>"
+        f"<h3>{html.escape(title)}</h3><p>{html.escape(desc)}</p></div></article>"
+        for title, desc in reports
     )
-    steps = [
-        ("上传流水", "拖入银行流水 Excel/CSV，可同时上传合同、回单等文档。"),
-        ("AI 分类", "系统逐行判定现金流项目，标出需要复核的行。"),
-        ("复核导出", "确认或修改分类，一键导出分类台账与汇总表。"),
+    capabilities = [
+        ("自动识别复杂表头", "支持银行导出的 Excel、CSV，自动查找真实表头并清理前置说明行。"),
+        ("多文件与多账户合并", "一次上传多个账户流水，并保留来源文件，减少人工复制粘贴。"),
+        ("会计规则与 AI 协同", "先执行确定性规则，再由当前配置的大模型补充判断和依据。"),
+        ("人工复核与规则学习", "优先呈现待确认项目，人工修改后沉淀为下次可复用规则。"),
+        ("财务可视化分析", "提供收支趋势、活动净额、分类结构和交易对手分析。"),
+        ("一套 Excel 完整交付", "分类台账、汇总、现金流量表和多维分析表一次导出。"),
     ]
-    step_cards = "".join(
-        f"<div class='card'><h3>{html.escape(t)}</h3><p>{html.escape(d)}</p></div>"
-        for t, d in steps
+    capability_cards = "".join(
+        f"<article class='cap-card'><span class='cap-index'>{i:02d}</span><h3>{html.escape(title)}</h3><p>{html.escape(desc)}</p></article>"
+        for i, (title, desc) in enumerate(capabilities, 1)
     )
     body = f"""
-<section class='hero'><div class='wrap'>
-  <span class='pill'>可切换大模型 + 会计准则口径</span>
-  <h1>银行流水，<span class='g'>一键生成现金流量表分类</span></h1>
-  <p class='sub'>{html.escape(config.SITE_TAGLINE)}。面向中小企业财务与代账会计，把逐笔归类的重复工作交给 AI，你只做复核。</p>
-  <div class='cta'>
-    <a class='btn primary lg' href='{P}/register'>免费开始，无需信用卡</a>
-    <a class='btn lg' href='{P}/pricing'>查看定价</a>
+<section class='home-hero'><div class='wrap hero-grid'>
+  <div class='hero-copy'>
+    <span class='eyebrow'>AI 财务流水分析与报表平台</span>
+    <h1>银行流水自动整理<span>多维财务报表一次生成</span></h1>
+    <p class='hero-lead'>上传银行流水，自动完成字段识别、收支归类、现金流分类、风险复核和多维财务报表。财务人员保留判断权，系统负责第一轮整理。</p>
+    <ul class='hero-points'><li>支持 Excel / CSV / 多账户合并</li><li>规则优先，AI 补充判断依据</li><li>一次导出多张可复核财务表</li></ul>
+    <div class='hero-actions'><a class='btn primary lg' href='{target}'>{target_text}</a><a class='btn lg' href='#reports'>查看可生成的报表</a></div>
+    <p class='hero-note'>免费版每月 {config.PLANS['free']['rows_per_month']} 行 · 无需信用卡 · 结果支持人工复核</p>
   </div>
-  <p class='muted' style='margin-top:16px;font-size:13px'>免费版每月 {config.PLANS['free']['rows_per_month']} 行额度</p>
+  <div class='product-preview' aria-label='财务分析报表界面预览'>
+    <div class='preview-head'><div><span class='preview-dot'></span><strong>本月资金分析</strong></div><span>已完成</span></div>
+    <div class='preview-kpis'><div><small>现金流入</small><b>¥ 1,286,400</b></div><div><small>现金流出</small><b>¥ 936,820</b></div><div><small>净增加额</small><b class='positive'>¥ 349,580</b></div></div>
+    <div class='preview-chart'><div class='chart-label'><span>每日资金趋势</span><small>近 30 天</small></div><svg viewBox='0 0 520 150' role='img' aria-label='现金流趋势示意图'><path class='area' d='M0 125 L45 110 L90 118 L135 75 L180 88 L225 55 L270 72 L315 38 L360 58 L405 32 L450 46 L500 18 L520 25 L520 150 L0 150Z'/><path class='line' d='M0 125 L45 110 L90 118 L135 75 L180 88 L225 55 L270 72 L315 38 L360 58 L405 32 L450 46 L500 18 L520 25'/></svg></div>
+    <div class='preview-reports'><div><span>现金流量表</span><b>已生成</b></div><div><span>费用支出分析</span><b>已生成</b></div><div><span>待复核流水</span><b class='warning'>12 笔</b></div></div>
+  </div>
 </div></section>
 
-<section class='section' id='features'><div class='wrap'>
-  <h2>把最花时间的归类交给 AI</h2>
-  <p class='lead'>不是简单关键词匹配，而是结合方向、对方、摘要、金额与你的会计口径综合判断。</p>
-  <div class='grid c3'>{feat_cards}</div>
+<section class='trust-strip'><div class='wrap trust-grid'>
+  <div><b>23 类</b><span>现金流项目口径</span></div><div><b>8+ 张</b><span>自动生成财务表</span></div>
+  <div><b>多账户</b><span>合并与来源追溯</span></div><div><b>可复核</b><span>每笔保留依据与置信度</span></div>
 </div></section>
 
-<section class='section' style='background:#fff' id='how'><div class='wrap'>
-  <h2>三步出结果</h2>
-  <p class='lead'>从上传到导出台账，通常几分钟。</p>
-  <div class='grid c3 steps'>{step_cards}</div>
-  <div style='text-align:center;margin-top:36px'><a class='btn primary lg' href='{P}/register'>立即免费试用</a></div>
+<section class='section reports-section' id='reports'><div class='wrap'>
+  <div class='section-intro'><span class='eyebrow'>报表中心</span><h2>不止现金流量表，一份流水生成多维财务分析</h2>
+  <p>所有报表都来自上传流水和已确认分类，不虚构银行流水无法支持的资产负债或利润数据。</p></div>
+  <div class='report-grid'>{report_cards}</div>
+  <div class='report-cta'><div><strong>一次导出，形成完整财务工作底稿</strong><span>包含分类结果、处理文件、分类汇总及多张分析表。</span></div><a class='btn primary' href='{target}'>上传流水生成报表</a></div>
 </div></section>
+
+<section class='section capability-section' id='features'><div class='wrap'>
+  <div class='section-intro'><span class='eyebrow'>核心能力</span><h2>不是黑盒自动编表，而是可解释、可复核的财务工作流</h2>
+  <p>系统负责识别、整理和初步判断；财务人员可以逐笔修改，并让规则越来越贴合企业口径。</p></div>
+  <div class='cap-grid'>{capability_cards}</div>
+</div></section>
+
+<section class='section workflow-section' id='how'><div class='wrap'>
+  <div class='section-intro'><span class='eyebrow'>工作流程</span><h2>四步完成从原始流水到财务报表</h2></div>
+  <ol class='workflow-list'>
+    <li><span>01</span><div><h3>上传原始资料</h3><p>银行流水、合同、回单和业务说明可一起上传。</p></div></li>
+    <li><span>02</span><div><h3>确认字段映射</h3><p>系统自动猜测日期、摘要、对方和金额列，你只需确认。</p></div></li>
+    <li><span>03</span><div><h3>AI 分类与集中复核</h3><p>优先处理低置信度和待确认项目，不必逐行从头检查。</p></div></li>
+    <li><span>04</span><div><h3>查看分析并导出</h3><p>查看趋势、结构和往来分析，一次下载完整 Excel 报表包。</p></div></li>
+  </ol>
+</div></section>
+
+<section class='section role-section'><div class='wrap role-grid'>
+  <div class='role-copy'><span class='eyebrow'>适用场景</span><h2>让财务人员把时间留给判断，而不是复制粘贴</h2><p>适用于月末流水整理、现金流编制、资金收支复盘、费用结构检查和往来单位分析。</p></div>
+  <div class='role-cards'><article><h3>企业财务</h3><p>多账户流水合并、月度资金分析、异常流水复核。</p></article><article><h3>代账会计</h3><p>批量整理客户流水，统一分类口径并导出工作底稿。</p></article><article><h3>财务负责人</h3><p>快速查看资金流入流出、支出结构和重点往来单位。</p></article></div>
+</div></section>
+
+<section class='security-band'><div class='wrap security-grid'><div><span class='eyebrow'>数据与控制权</span><h2>AI 给建议，最终判断始终由财务人员确认</h2></div><ul><li>账号与任务数据隔离</li><li>低置信度自动进入复核</li><li>支持自定义会计口径 Skill</li><li>文件和结果保存在自有服务器</li></ul></div></section>
+
+<section class='final-cta'><div class='wrap'><span class='eyebrow'>开始使用</span><h2>上传第一份流水，看看它能生成哪些财务报表</h2><p>无需改模板，先从现有银行流水开始。</p><a class='btn primary lg' href='{target}'>{target_text}</a></div></section>
 """
     return public_shell(config.SITE_NAME, body, user)
 

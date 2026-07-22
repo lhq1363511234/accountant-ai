@@ -35,3 +35,24 @@ def test_cashflow_statement_totals():
     ]}
     cf = engine.cashflow_statement(job)
     assert cf["net_increase"] == 1200
+
+
+def test_excel_export_contains_financial_report_pack(tmp_path: Path):
+    from openpyxl import load_workbook
+    job = {
+        "rows": [
+            {"来源文件": "bank-a.csv", "日期": "2026-01-01", "摘要": "销售回款"},
+            {"来源文件": "bank-b.csv", "日期": "2026-01-02", "摘要": "房租"},
+        ],
+        "files": ["bank-a.csv", "bank-b.csv"],
+        "results": [
+            {"category": "销售商品、提供劳务收到的现金", "reason": "客户回款", "confidence": 0.95,
+             "review": False, "source": "规则", "ctx": {"date": "2026-01-01", "summary": "销售回款", "counterparty": "甲客户", "signed_amount": 1000}},
+            {"category": "支付其他与经营活动有关的现金", "reason": "办公场地租金", "confidence": 0.88,
+             "review": True, "source": "AI", "ctx": {"date": "2026-01-02", "summary": "房租", "counterparty": "乙物业", "signed_amount": -300}},
+        ],
+    }
+    out = engine.export_excel(job, tmp_path / "reports.xlsx")
+    sheets = set(load_workbook(out, read_only=True).sheetnames)
+    assert {"分类结果", "现金流量表", "资金收支总览", "每日资金收支", "收入分类分析",
+            "费用支出分析", "往来单位分析", "待复核流水", "多账户来源汇总"} <= sheets

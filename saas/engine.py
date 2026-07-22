@@ -860,4 +860,91 @@ def export_excel(job: Dict[str, Any], out_path: Path) -> Path:
         if cf["unclassified_count"]:
             stmt_rows.append({"项目": f"（待确认 / 未纳入，需人工复核）", "金额": cf["unclassified_amount"], "笔数": cf["unclassified_count"]})
         pd.DataFrame(stmt_rows).to_excel(writer, sheet_name="现金流量表", index=False)
+
+        # 可直接交付财务复核的多维报表包（均由本次流水和分类结果生成）。
+        an = analytics(job)
+        overview = [
+            {"指标": "流水总笔数", "数值": an["total"]},
+            {"指标": "现金流入总额", "数值": an["total_in"]},
+            {"指标": "现金流出总额", "数值": an["total_out"]},
+            {"指标": "现金净增加额", "数值": an["net_increase"]},
+            {"指标": "流入笔数", "数值": an["in_count"]},
+            {"指标": "流出笔数", "数值": an["out_count"]},
+            {"指标": "需要复核笔数", "数值": an["review_count"]},
+            {"指标": "待确认笔数", "数值": an["unclassified_count"]},
+        ]
+        pd.DataFrame(overview).to_excel(writer, sheet_name="资金收支总览", index=False)
+
+        daily = [{"日期": x["date"], "流入": x["in"], "流出": x["out"],
+                  "当日净额": x["net"], "累计净额": x["cumulative"]} for x in an["trend"]]
+        pd.DataFrame(daily, columns=["日期", "流入", "流出", "当日净额", "累计净额"]).to_excel(
+            writer, sheet_name="每日资金收支", index=False)
+        pd.DataFrame(
+            [{"收入类别": x["name"], "金额": x["amount"]} for x in an["income_cats"]],
+            columns=["收入类别", "金额"],
+        ).to_excel(writer, sheet_name="收入分类分析", index=False)
+        pd.DataFrame(
+            [{"支出类别": x["name"], "金额": x["amount"]} for x in an["expense_cats"]],
+            columns=["支出类别", "金额"],
+        ).to_excel(writer, sheet_name="费用支出分析", index=False)
+
+        counterparties: Dict[str, Dict[str, float]] = {}
+        source_files: Dict[str, Dict[str, float]] = {}
+        review_rows = []
+        for raw, result in zip(rows, results):
+            ctx = result.get("ctx") or {}
+            amount = float(ctx.get("signed_amount") or 0)
+            name = str(ctx.get("counterparty") or "").strip() or "（未填写对方）"
+            cp = counterparties.setdefault(name, {"in": 0.0, "out": 0.0, "count": 0})
+            cp["count"] += 1
+            if amount > 0:
+                cp["in"] += amount
+            elif amount < 0:
+                cp["out"] += -amount
+            source = str(raw.get("来源文件") or "（未标记来源）")
+            sf = source_files.setdefault(source, {"in": 0.0, "out": 0.0, "count": 0})
+            sf["count"] += 1
+            if amount > 0:
+                sf["in"] += amount
+            elif amount < 0:
+                sf["out"] += -amount
+            if result.get("review") or result.get("category") == "待确认":
+                review_rows.append({
+                    "日期": ctx.get("date", ""), "摘要": ctx.get("summary", ""),
+                    "对方": ctx.get("counterparty", ""), "金额": amount,
+                    "当前分类": result.get("category", ""), "判断依据": result.get("reason", ""),
+                    "置信度": result.get("confidence", ""), "来源": result.get("source", ""),
+                })
+        cp_rows = [
+            {"往来单位": name, "交易笔数": v["count"], "流入金额": round(v["in"], 2),
+             "流出金额": round(v["out"], 2), "交易总额": round(v["in"] + v["out"], 2)}
+            for name, v in counterparties.items()
+        ]
+        cp_rows.sort(key=lambda x: -x["交易总额"])
+        pd.DataFrame(cp_rows).to_excel(writer, sheet_name="往来单位分析", index=False)
+        pd.DataFrame(review_rows, columns=["日期", "摘要", "对方", "金额", "当前分类", "判断依据", "置信度", "来源"]).to_excel(
+            writer, sheet_name="待复核流水", index=False)
+        source_rows = [
+            {"来源文件": name, "流水笔数": v["count"], "流入金额": round(v["in"], 2),
+             "流出金额": round(v["out"], 2), "净额": round(v["in"] - v["out"], 2)}
+            for name, v in source_files.items()
+        ]
+        pd.DataFrame(source_rows).to_excel(writer, sheet_name="多账户来源汇总", index=False)
+
+        # 基础工作簿美化：冻结表头、筛选、统一表头与自适应列宽。
+        from openpyxl.styles import Font, PatternFill, Alignment
+        header_fill = PatternFill("solid", fgColor="EAF1FF")
+        header_font = Font(bold=True, color="1E3A8A")
+        for ws in writer.book.worksheets:
+            ws.freeze_panes = "A2"
+            if ws.max_row >= 1 and ws.max_column >= 1:
+                ws.auto_filter.ref = ws.dimensions
+            for cell in ws[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(vertical="center")
+            for column in ws.columns:
+                letter = column[0].column_letter
+                max_len = max((len(str(cell.value or "")) for cell in column[:200]), default=8)
+                ws.column_dimensions[letter].width = min(max(max_len + 2, 10), 42)
     return out_path

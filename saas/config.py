@@ -51,7 +51,7 @@ ALLOWED_SUFFIXES = (".xlsx", ".xlsm", ".xls", ".csv", ".txt", ".md", ".docx", ".
 
 # 站点信息（落地页用）
 SITE_NAME = os.getenv("SITE_NAME", "现金流 AI")
-SITE_TAGLINE = "银行流水一键生成现金流量表分类"
+SITE_TAGLINE = "银行流水智能分类、分析与财务报表生成"
 
 # 注册邮箱验证：通过 toolkit SMTP Console 的内部 API 发信，密钥不进入业务代码。
 MAIL_API_URL = os.getenv("MAIL_API_URL", "http://127.0.0.1:18430/api/send").strip()
@@ -154,7 +154,7 @@ PLANS = {
         "price_month": 0,
         "rows_per_month": 200,
         "max_rows_per_job": 200,
-        "features": ["每月 200 行流水额度", "现金流量表 23 类分类", "Excel 导出", "可切换大模型智能分类"],
+        "features": ["每月 200 行流水额度", "现金流量表 23 类分类", "8+ 张财务分析表", "Excel 报表包导出", "可切换大模型智能分类"],
     },
     "pro": {
         "code": "pro",
@@ -162,7 +162,7 @@ PLANS = {
         "price_month": 99,
         "rows_per_month": 20000,
         "max_rows_per_job": 5000,
-        "features": ["每月 20000 行流水额度", "多文件合并处理", "文档作为分类依据", "规则学习", "优先处理"],
+        "features": ["每月 20000 行流水额度", "多文件与多账户合并", "往来单位与费用分析", "文档作为分类依据", "规则学习", "优先处理"],
     },
     "team": {
         "code": "team",
@@ -170,7 +170,7 @@ PLANS = {
         "price_month": 299,
         "rows_per_month": 100000,
         "max_rows_per_job": 5000,
-        "features": ["每月 100000 行流水额度", "专业版全部功能", "自定义会计口径 Skill", "导出汇总台账", "邮件支持"],
+        "features": ["每月 100000 行流水额度", "专业版全部功能", "自定义会计口径 Skill", "完整财务工作底稿", "邮件支持"],
     },
 }
 DEFAULT_PLAN = "free"

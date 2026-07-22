@@ -538,6 +538,8 @@ def results(job_id):
             f"<td data-label='来源' class='muted source-cell'>{html.escape(str(r.get('source','')))}</td></tr>"
         )
     review_total = sum(1 for r in results if r.get("review") or r.get("category") == "待确认")
+    report_names = ["现金流量表", "资金收支总览", "每日资金收支", "收入分类分析", "费用支出分析", "往来单位分析", "待复核流水", "多账户来源汇总"]
+    report_pack = "".join(f"<span><i></i>{html.escape(name)}</span>" for name in report_names)
     body = f"""
     <div class='page-head result-head'><div><h1>分类结果</h1><p class='muted filename-context'>{html.escape(engine.display_filename(data))} · {len(results)} 行</p></div>
       <a class='btn primary desktop-only' href='{P}/app/job/{job_id}/export'>导出 Excel</a></div>
@@ -549,6 +551,7 @@ def results(job_id):
     </nav>
     <section class='result-panel active' data-result-panel='overview'>
       {cf_card}
+      <div class='card report-pack-card'><div class='section-head'><div><h3>财务报表包</h3><p class='muted'>本次流水可一次导出以下工作表，所有数据均可追溯到原始流水。</p></div><span class='report-count'>8 张</span></div><div class='report-pack-grid'>{report_pack}</div></div>
       <div class='card'><div class='section-head'><div><h3>分类汇总</h3><p class='muted'>先看整体结构，需要时再进入逐笔复核</p></div></div><div class='chips'>{chips}</div>
       <div class='action-grid'>
         <a class='btn primary' href='{P}/app/job/{job_id}/export'>导出 Excel</a>
@@ -708,7 +711,7 @@ def export(job_id):
         return redirect(f"{P}/app/job/{job_id}/map")
     out = config.EXPORT_DIR / f"cashflow_{g.user.id}_{job_id}.xlsx"
     engine.export_excel(data, out)
-    return send_file(str(out), as_attachment=True, download_name=f"现金流分类_{job_id}.xlsx")
+    return send_file(str(out), as_attachment=True, download_name=f"财务流水分析报表_{job_id}.xlsx")
 
 
 # ---------- 财务 Skill ----------
