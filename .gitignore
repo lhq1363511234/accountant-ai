@@ -1,0 +1,21 @@
+# Runtime data and secrets
+saas/data/
+*.db
+.env
+*.env
+__pycache__/
+*.py[cod]
+*.log
+
+# Uploaded/exported customer data
+data/
+uploads/
+exports/
+
+# Local tooling
+.pytest_cache/
+.venv/
+.DS_Store
+
+# Legacy prototype entrypoint (production app is saas/main.py)
+app.py

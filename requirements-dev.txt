@@ -1,0 +1,2 @@
+-r saas/requirements.txt
+pytest>=7,<9
