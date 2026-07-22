@@ -7,6 +7,7 @@ from __future__ import annotations
 from flask import Flask, request, redirect, session, g, abort, jsonify
 
 import config
+import ai_settings
 import secrets
 from models import db, User
 from views_public import public as bp_public
@@ -57,10 +58,12 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     @app.get(f"{P}/health")
     def health():
+        ai = ai_settings.public_settings()
         return jsonify({
             "ok": True,
-            "model": config.AI_MODEL_NAME,
-            "ai_configured": bool(config.AI_KEY),
+            "model": ai.get("display_name") or ai.get("model") or "未配置",
+            "provider": ai.get("provider"),
+            "ai_configured": bool(ai.get("enabled") and ai.get("key_configured") and ai.get("model")),
             "database": "ok",
         })
 

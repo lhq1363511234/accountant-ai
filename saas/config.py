@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""集中配置：AI 后端（Grok 4.5）、路径、现金流分类口径、默认规则与 Skill。"""
+"""集中配置：可切换 AI 后端、路径、现金流分类口径、默认规则与 Skill。"""
 from __future__ import annotations
 
 import os
@@ -29,12 +29,13 @@ def load_env_file(path: Path) -> Dict[str, str]:
     return out
 
 
-# ---------- AI 后端：Grok 4.5（通过本地 CLIProxyAPI 代理调用 xAI）----------
+# ---------- AI 后端默认值（管理员后台可覆盖）----------
 # 默认走本机 cliproxyapi（127.0.0.1:8317），可用环境变量覆盖。
 AI_BASE = os.getenv("AI_BASE_URL", "http://127.0.0.1:8317/v1")
 AI_KEY = os.getenv("AI_API_KEY", "").strip()
 AI_MODEL = os.getenv("AI_MODEL", "grok-4.5")
 AI_MODEL_NAME = os.getenv("AI_MODEL_NAME", "Grok 4.5")   # 展示用名称
+AI_SETTINGS_PATH = os.getenv("AI_SETTINGS_PATH", "/etc/account-ai-ai.json")
 # 兼容旧引用
 DEEPSEEK_KEY = AI_KEY
 DEEPSEEK_BASE = AI_BASE
@@ -153,7 +154,7 @@ PLANS = {
         "price_month": 0,
         "rows_per_month": 200,
         "max_rows_per_job": 200,
-        "features": ["每月 200 行流水额度", "现金流量表 23 类分类", "Excel 导出", "Grok 4.5 智能分类"],
+        "features": ["每月 200 行流水额度", "现金流量表 23 类分类", "Excel 导出", "可切换大模型智能分类"],
     },
     "pro": {
         "code": "pro",

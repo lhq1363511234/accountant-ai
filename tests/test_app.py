@@ -5,11 +5,14 @@ import pytest
 from main import create_app
 from models import db, User, Job, Usage, EmailVerification, current_period
 import mailer
+import ai_settings
+import config
 import engine
 
 
 @pytest.fixture()
-def app(tmp_path):
+def app(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "AI_SETTINGS_PATH", str(tmp_path / "ai-settings.json"))
     app = create_app({
         "TESTING": True,
         "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'test.db'}",
@@ -133,3 +136,55 @@ def test_classify_is_idempotent_and_quota_charged_once(app, monkeypatch):
     with app.app_context():
         usage = Usage.query.filter_by(user_id=uid, period=current_period()).one()
         assert usage.rows_used == 1
+
+
+def test_admin_can_test_and_activate_ai_settings(app, monkeypatch):
+    uid = make_user(app, "admin@example.com")
+    with app.app_context():
+        user = db.session.get(User, uid)
+        user.is_admin = True
+        db.session.commit()
+    monkeypatch.setattr(ai_settings, "test_connection", lambda data: {"ok": True, "message": "连接成功", "models": [data["model"]]})
+    client = app.test_client()
+    login_session(client, uid)
+    r = client.post("/account/app/admin/ai-settings", data={
+        "csrf_token": "test-token",
+        "action": "activate",
+        "provider": "Test NewAPI",
+        "base_url": "https://api.example.com",
+        "model": "test-model",
+        "display_name": "Test Model",
+        "api_key": "sk-test-secret-value-123456",
+    }, follow_redirects=True)
+    assert r.status_code == 200
+    page = r.get_data(as_text=True)
+    assert "已切换为当前模型" in page
+    assert "sk-test-secret-value-123456" not in page
+    active = ai_settings.load_settings()
+    assert active["enabled"] is True
+    assert active["base_url"] == "https://api.example.com/v1"
+    assert active["model"] == "test-model"
+
+
+def test_failed_ai_test_keeps_previous_active_settings(app, monkeypatch):
+    ai_settings.save_settings({
+        "provider": "Working", "base_url": "https://working.example/v1", "api_key": "sk-working-secret-123",
+        "model": "working-model", "display_name": "Working Model", "enabled": True, "updated_at": 1,
+    })
+    uid = make_user(app, "admin2@example.com")
+    with app.app_context():
+        user = db.session.get(User, uid)
+        user.is_admin = True
+        db.session.commit()
+    monkeypatch.setattr(ai_settings, "test_connection", lambda data: {"ok": False, "message": "无可用模型", "models": []})
+    client = app.test_client()
+    login_session(client, uid)
+    client.post("/account/app/admin/ai-settings", data={
+        "csrf_token": "test-token", "action": "activate", "provider": "Broken",
+        "base_url": "https://broken.example/v1", "model": "bad-model", "display_name": "Bad",
+        "api_key": "sk-broken-secret-123",
+    })
+    active = ai_settings.load_settings()
+    draft = ai_settings.load_draft()
+    assert active["provider"] == "Working" and active["enabled"] is True
+    assert draft["provider"] == "Broken" and draft["enabled"] is False

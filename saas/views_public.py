@@ -108,7 +108,7 @@ def _send_registration_code(email: str, password: str, company: str) -> tuple[bo
 def landing():
     user = _current_user()
     feats = [
-        ("🤖", "AI 逐行分类", "结合规则引擎与 Grok 4.5 大模型，银行流水逐行判定现金流量表项目，给出依据与置信度。"),
+        ("🤖", "AI 逐行分类", "结合规则引擎与管理员配置的大模型，银行流水逐行判定现金流量表项目，给出依据与置信度。"),
         ("📊", "现金流量表 23 类", "严格按《企业会计准则第31号》经营/投资/筹资口径，覆盖 23 个现金流项目。"),
         ("📎", "多文件合并", "多个账户流水一次上传合并处理，合同/回单/说明可作为分类依据一起分析。"),
         ("✅", "人工复核优先", "低置信度自动标记待复核，会计确认一次即沉淀为规则，越用越准。"),
@@ -130,7 +130,7 @@ def landing():
     )
     body = f"""
 <section class='hero'><div class='wrap'>
-  <span class='pill'>Grok 4.5 大模型 + 会计准则口径</span>
+  <span class='pill'>可切换大模型 + 会计准则口径</span>
   <h1>银行流水，<span class='g'>一键生成现金流量表分类</span></h1>
   <p class='sub'>{html.escape(config.SITE_TAGLINE)}。面向中小企业财务与代账会计，把逐笔归类的重复工作交给 AI，你只做复核。</p>
   <div class='cta'>

@@ -166,7 +166,7 @@ footer{border-top:1px solid var(--line);padding:32px 0;color:var(--muted);font-s
 .err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;padding:11px 14px;border-radius:12px;margin:12px 0;font-size:14px}
 .ok{background:#ecfdf5;border:1px solid #a7f3d0;color:#047857;padding:11px 14px;border-radius:12px;margin:12px 0;font-size:14px}
 label{display:block;font-size:14px;font-weight:600;margin:14px 0 6px}
-input[type=text],input[type=email],input[type=password],input[type=search],textarea,select{
+input[type=text],input[type=email],input[type=password],input[type=search],input[type=url],textarea,select{
   width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:11px;font-size:15px;background:#fff;font-family:inherit}
 input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
 input[type=file]{width:100%;padding:11px;border:1.5px dashed #cbd5e1;border-radius:12px;background:#fafbfc}
@@ -295,6 +295,9 @@ pre.doc{white-space:pre-wrap;max-height:340px;overflow:auto;background:#fff;bord
 .inout-legend{display:flex;justify-content:space-between;margin-top:12px;font-size:13px;color:var(--ink);flex-wrap:wrap;gap:8px}
 .inout-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle}
 
+
+.admin-ai-card{margin-bottom:16px}.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}.settings-grid .full{grid-column:1/-1}.settings-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.config-status{display:inline-flex;align-items:center;min-height:30px;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}.config-status.ok{background:#ecfdf5;color:#047857}.config-status.warn{background:#fff7ed;color:#b45309}
+@media(max-width:860px){.settings-grid{grid-template-columns:1fr}.settings-grid .full{grid-column:auto}.settings-actions{display:grid;grid-template-columns:1fr 1fr}.settings-actions .btn{justify-content:center}.settings-actions .danger-soft{grid-column:1/-1}.admin-ai-card .section-head{display:block}.config-status{margin-top:10px}}
 
 /* ===== Human-centered task and result information architecture ===== */
 .page-head{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:0 0 20px}

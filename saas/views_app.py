@@ -19,6 +19,7 @@ import config
 import engine
 import charts
 import billing
+import ai_settings
 from theme import app_shell
 from models import db, User, Job, current_period
 
@@ -761,12 +762,80 @@ def admin():
             f"<select name='plan'>" + "".join(f"<option value='{c}' {'selected' if u.plan==c else ''}>{p['name']}</option>" for c, p in config.PLANS.items()) + "</select>"
             f"<button class='btn sm' type='submit'>改套餐</button></form></td></tr>"
         )
+
+    ai = ai_settings.admin_public_settings()
+    notice_data = session.pop("admin_ai_notice", None)
+    notice = ""
+    if isinstance(notice_data, dict):
+        kind = "ok" if notice_data.get("ok") else "warn"
+        notice = f"<div class='alert {kind}'>{html.escape(str(notice_data.get('message') or ''))}</div>"
+    status_class = "ok" if ai.get("active_enabled") else "warn"
+    status_text = "已启用" if status_class == "ok" else "未启用 / 等待有效模型"
+    checked = "checked" if ai.get("enabled") else ""
+    ai_card = f"""
+    <section class='card admin-ai-card'>
+      <div class='section-head'><div><h2>AI 平台与模型</h2><p class='muted'>配置 OpenAI 兼容接口。Key 仅保存在服务器 600 权限文件中，页面永不回显明文。</p></div>
+      <span class='config-status {status_class}'>{status_text}</span></div>
+      {notice}
+      <form method='post' action='{P}/app/admin/ai-settings'>
+        <div class='settings-grid'>
+          <div><label>平台名称</label><input type='text' name='provider' required maxlength='80' value='{html.escape(str(ai.get('provider') or ''), quote=True)}' placeholder='FastModel NewAPI'></div>
+          <div><label>展示名称</label><input type='text' name='display_name' maxlength='120' value='{html.escape(str(ai.get('display_name') or ''), quote=True)}' placeholder='例如 GPT-5.2'></div>
+          <div class='full'><label>API 地址</label><input type='url' name='base_url' required value='{html.escape(str(ai.get('base_url') or ''), quote=True)}' placeholder='https://example.com/v1'><p class='field-help'>输入平台根地址时会自动补全 /v1；远程地址必须使用 HTTPS。</p></div>
+          <div><label>模型名称</label><input type='text' name='model' value='{html.escape(str(ai.get('model') or ''), quote=True)}' placeholder='由平台提供的模型 ID'></div>
+          <div><label>API Key</label><input type='password' name='api_key' autocomplete='new-password' placeholder='留空则保留当前 Key'><p class='field-help'>当前：{html.escape(str(ai.get('masked_key') or '未配置'))}</p></div>
+        </div>
+        <div class='settings-actions'>
+          <button class='btn' type='submit' name='action' value='draft'>保存草稿</button>
+          <button class='btn primary' type='submit' name='action' value='activate'>测试并启用</button>
+          <button class='btn danger-soft' type='submit' name='action' value='disable' formnovalidate>停用 AI</button>
+        </div>
+      </form>
+    </section>
+    """
     body = f"""
-    <div class='page-head'><h1>管理后台</h1><span class='muted'>共 {len(users)} 个用户</span></div>
-    <div class='card'><table class='tbl'><thead><tr><th>邮箱</th><th>公司</th><th>套餐</th><th>本月用量</th><th>任务数</th><th>角色</th><th>操作</th></tr></thead>
-    <tbody>{rows}</tbody></table></div>
+    <div class='page-head'><div><h1>管理后台</h1><p class='muted'>系统配置与用户管理</p></div><span class='muted'>共 {len(users)} 个用户</span></div>
+    {ai_card}
+    <div class='card'><div class='section-head'><div><h2>用户与套餐</h2><p class='muted'>调整用户套餐和查看本月用量</p></div></div><div class='table-wrap'><table class='tbl'><thead><tr><th>邮箱</th><th>公司</th><th>套餐</th><th>本月用量</th><th>任务数</th><th>角色</th><th>操作</th></tr></thead>
+    <tbody>{rows}</tbody></table></div></div>
     """
     return app_shell("管理后台", "admin", body, g.user, _quota())
+
+
+@bp.route("/app/admin/ai-settings", methods=["POST"])
+def admin_ai_settings():
+    if not g.user.is_admin:
+        abort(403)
+    action = request.form.get("action") or "draft"
+    current = ai_settings.load_settings()
+    if action == "disable":
+        ai_settings.disable_active()
+        session["admin_ai_notice"] = {"ok": True, "message": "AI 已停用，规则分类仍可继续使用。"}
+        return redirect(f"{P}/app/admin")
+    try:
+        candidate = ai_settings.build_candidate(
+            request.form,
+            keep_existing_key=True,
+            require_model=(action == "activate"),
+        )
+        candidate["enabled"] = False
+        if action == "draft":
+            ai_settings.save_draft(candidate)
+            session["admin_ai_notice"] = {"ok": True, "message": "配置草稿已安全保存，当前生产模型未改变。"}
+        else:
+            result = ai_settings.test_connection(candidate)
+            if result.get("ok"):
+                candidate["enabled"] = True
+                ai_settings.save_settings(candidate)
+                session["admin_ai_notice"] = {"ok": True, "message": f"{result['message']}，已切换为当前模型。"}
+            else:
+                ai_settings.save_draft(candidate)
+                models = result.get("models") or []
+                suffix = f"；平台返回模型：{', '.join(models[:8])}" if models else ""
+                session["admin_ai_notice"] = {"ok": False, "message": f"连接未通过：{result.get('message')}{suffix}。配置已保存为未启用草稿。"}
+    except Exception as exc:
+        session["admin_ai_notice"] = {"ok": False, "message": f"配置无效：{exc}"}
+    return redirect(f"{P}/app/admin")
 
 
 @bp.route("/app/admin/setplan", methods=["POST"])
