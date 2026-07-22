@@ -114,35 +114,62 @@ def dashboard():
     jobs = Job.query.filter_by(user_id=g.user.id).order_by(Job.created_at.desc()).limit(6).all()
     pct = 0 if not q["limit"] else min(100, round(q["used"] * 100 / q["limit"]))
     recent = "".join(
-        f"<tr><td>{html.escape(j.filename or '未命名')}</td>"
+        f"<tr><td class='filename-cell'>{html.escape(j.filename or '未命名')}</td>"
         f"<td>{'流水表' if j.type=='table' else '文档'}</td>"
         f"<td>{j.row_count or 0}</td>"
         f"<td><span class='tag tag-{j.status}'>{_status_label(j.status)}</span></td>"
         f"<td>{time.strftime('%m-%d %H:%M', time.localtime(j.created_at))}</td>"
         f"<td><a class='btn sm' href='{P}/app/job/{j.id}'>打开</a></td></tr>"
         for j in jobs
-    ) or "<tr><td colspan='6' class='muted' style='text-align:center;padding:24px'>还没有任务，去上传第一份银行流水吧。</td></tr>"
+    ) or "<tr><td colspan='6' class='muted empty-row'>还没有任务，去上传第一份银行流水吧。</td></tr>"
+    recent_cards = "".join(_task_card(j) for j in jobs) or (
+        f"<div class='empty-state'><h3>还没有任务</h3><p>上传一份银行流水后，任务会出现在这里。</p>"
+        f"<a class='btn primary' href='{P}/app/upload'>上传第一份流水</a></div>"
+    )
 
     body = f"""
-    <div class='page-head'><h1>控制台</h1><a class='btn primary' href='{P}/app/upload'>+ 上传处理</a></div>
+    <div class='page-head'><div><h1>控制台</h1><p class='muted'>查看额度和最近处理进度</p></div><a class='btn primary' href='{P}/app/upload'>上传处理</a></div>
     <div class='cards-4'>
-      <div class='stat'><div class='stat-label'>当前套餐</div><div class='stat-val'>{q['plan_name']}</div><a class='muted' href='{P}/pricing'>升级 →</a></div>
-      <div class='stat'><div class='stat-label'>本月已用行数</div><div class='stat-val'>{q['used']}</div><div class='muted'>周期 {current_period()}</div></div>
-      <div class='stat'><div class='stat-label'>本月剩余额度</div><div class='stat-val'>{q['remaining']}</div><div class='muted'>共 {q['limit']} 行</div></div>
+      <div class='stat'><div class='stat-label'>当前套餐</div><div class='stat-val'>{q['plan_name']}</div><a class='muted' href='{P}/pricing'>升级套餐</a></div>
+      <div class='stat'><div class='stat-label'>本月已用</div><div class='stat-val'>{q['used']}</div><div class='muted'>周期 {current_period()}</div></div>
+      <div class='stat'><div class='stat-label'>剩余额度</div><div class='stat-val'>{q['remaining']}</div><div class='muted'>共 {q['limit']} 行</div></div>
       <div class='stat'><div class='stat-label'>单次上限</div><div class='stat-val'>{q['max_rows_per_job']}</div><div class='muted'>行/任务</div></div>
     </div>
-    <div class='card'><div class='usage-bar'><span style='width:{pct}%'></span></div>
-    <p class='muted'>本月额度已使用 {pct}%。额度按“成功分类的流水行数”计算，文档问答不计费。</p></div>
-    <div class='card'><h2>最近任务</h2>
-    <table class='tbl'><thead><tr><th>文件</th><th>类型</th><th>行数</th><th>状态</th><th>时间</th><th></th></tr></thead>
-    <tbody>{recent}</tbody></table>
-    <p><a class='btn' href='{P}/app/jobs'>查看全部任务 →</a></p></div>
+    <div class='card quota-card'><div class='usage-copy'><strong>本月额度</strong><span>{pct}% 已使用</span></div><div class='usage-bar'><span style='width:{pct}%'></span></div>
+    <p class='muted'>只计算成功分类的流水行数，文档问答不占额度。</p></div>
+    <section class='card task-section'><div class='section-head'><div><h2>最近任务</h2><p class='muted'>继续上次工作或查看处理结果</p></div><a class='text-link' href='{P}/app/jobs'>查看全部</a></div>
+    <div class='desktop-only table-wrap compact-table'><table class='tbl task-table'><thead><tr><th>文件</th><th>类型</th><th>行数</th><th>状态</th><th>时间</th><th></th></tr></thead><tbody>{recent}</tbody></table></div>
+    <div class='mobile-only task-list'>{recent_cards}</div></section>
     """
     return app_shell("控制台", "dashboard", body, g.user, q)
 
 
 def _status_label(s: str) -> str:
     return {"created": "待处理", "classified": "已分类", "answered": "已分析"}.get(s, s)
+
+
+def _task_card(job: Job, *, deletable: bool = False) -> str:
+    """Mobile-first task summary: prioritize filename, state, time and next action."""
+    filename = html.escape(job.filename or "未命名")
+    kind = "流水表" if job.type == "table" else "文档"
+    created = time.strftime("%Y-%m-%d %H:%M", time.localtime(job.created_at))
+    delete_action = ""
+    if deletable:
+        delete_action = (
+            f"<form method='post' action='{P}/app/job/{job.id}/delete' "
+            "onsubmit=\"return confirm('确认删除该任务？删除后文件与结果无法恢复。')\">"
+            "<button class='btn danger-soft' type='submit'>删除</button></form>"
+        )
+    return (
+        "<article class='task-card'>"
+        f"<div class='task-card-top'><span class='task-kind'>{kind}</span>"
+        f"<span class='tag tag-{job.status}'>{_status_label(job.status)}</span></div>"
+        f"<h3 class='task-filename' title='{filename}'>{filename}</h3>"
+        "<div class='task-meta'>"
+        f"<span><b>{job.row_count or 0}</b> 行</span><span>{created}</span></div>"
+        f"<div class='task-actions'><a class='btn primary' href='{P}/app/job/{job.id}'>查看任务</a>{delete_action}</div>"
+        "</article>"
+    )
 
 
 # ---------- 上传 ----------
@@ -411,10 +438,11 @@ def results(job_id):
         net = act["net"]
         net_cls = "in" if net >= 0 else "out"
         act_cards += (
-            f"<div class='cf-act'><div class='cf-act-head'>{html.escape(act['activity'])}产生的现金流量</div>"
-            f"{lines}"
+            f"<details class='cf-act' open><summary class='cf-act-summary'><span>{html.escape(act['activity'])}活动</span>"
+            f"<strong class='num {net_cls}'>{_fmt(net)}</strong></summary>"
+            f"<div class='cf-act-title'>{html.escape(act['activity'])}产生的现金流量</div>{lines}"
             f"<div class='cf-line total'><span>{html.escape(act['activity'])}现金流量净额</span>"
-            f"<span class='num {net_cls}'>{_fmt(net)}</span></div></div>"
+            f"<span class='num {net_cls}'>{_fmt(net)}</span></div></details>"
         )
     ni = cf["net_increase"]
     ni_cls = "in" if ni >= 0 else "out"
@@ -494,35 +522,60 @@ def results(job_id):
         ctx = r.get("ctx") or {}
         conf = r.get("confidence", 0)
         review = "⚠️" if r.get("review") else ""
+        search_text = html.escape(" ".join(str(ctx.get(k, "")) for k in ("date", "summary", "counterparty")), quote=True)
+        reason = html.escape(str(r.get("reason", "")))[:240]
+        review_flag = "1" if r.get("review") or r.get("category") == "待确认" else "0"
         trs.append(
-            f"<tr><td data-label='日期'>{html.escape(str(ctx.get('date','')))}</td>"
-            f"<td data-label='摘要'>{html.escape(str(ctx.get('summary','')))[:40]}</td>"
-            f"<td data-label='对方'>{html.escape(str(ctx.get('counterparty','')))[:20]}</td>"
-            f"<td data-label='金额' class='num'>{ctx.get('signed_amount','')}</td>"
+            f"<tr data-review='{review_flag}' data-search='{search_text.lower()}'>"
+            f"<td data-label='日期'>{html.escape(str(ctx.get('date','')))}</td>"
+            f"<td data-label='摘要' class='summary-cell'>{html.escape(str(ctx.get('summary','')))[:80]}</td>"
+            f"<td data-label='对方'>{html.escape(str(ctx.get('counterparty','')))[:50]}</td>"
+            f"<td data-label='金额' class='num amount-cell'>{ctx.get('signed_amount','')}</td>"
             f"<td data-label='现金流分类'><select name='cat_{r.get('id')}'>{opt(r.get('category'))}</select></td>"
-            f"<td data-label='判断依据' class='muted reason-cell' style='max-width:260px;font-size:12px'>{html.escape(str(r.get('reason','')))[:120]}</td>"
+            f"<td data-label='判断依据' class='muted reason-cell'><details><summary>查看判断依据</summary><div>{reason}</div></details></td>"
             f"<td data-label='置信' class='num'>{conf}{review}</td>"
-            f"<td data-label='来源' class='muted' style='font-size:12px'>{html.escape(str(r.get('source','')))}</td></tr>"
+            f"<td data-label='来源' class='muted source-cell'>{html.escape(str(r.get('source','')))}</td></tr>"
         )
+    review_total = sum(1 for r in results if r.get("review") or r.get("category") == "待确认")
     body = f"""
-    <div class='page-head'><h1>分类结果</h1><span class='muted'>{html.escape(engine.display_filename(data))} · {len(results)} 行</span></div>
+    <div class='page-head result-head'><div><h1>分类结果</h1><p class='muted filename-context'>{html.escape(engine.display_filename(data))} · {len(results)} 行</p></div>
+      <a class='btn primary desktop-only' href='{P}/app/job/{job_id}/export'>导出 Excel</a></div>
     {note}
-    {cf_card}
-    {dash}
-    <div class='card'><h3>分类汇总</h3><div class='chips'>{chips}</div>
-    <p style='margin-top:14px'>
-      <a class='btn primary' href='{P}/app/job/{job_id}/export'>导出 Excel</a>
-      <a class='btn' href='{P}/app/job/{job_id}/ask'>问 AI</a>
-      <a class='btn' href='{P}/app/job/{job_id}/report'>下载报告</a>
-    </p></div>
-    <div class='card'>
-      <form method='post'>
-        <p class='muted'>修改任意行的分类后点击保存，系统会记住你的判断，下次遇到相似流水自动套用（规则学习）。</p>
-        <div class='mobile-hint'>左右滑动查看完整字段，或直接在卡片中修改分类</div><div class='table-wrap results-scroll'><table class='tbl results-table'><thead><tr><th>日期</th><th>摘要</th><th>对方</th><th>金额</th><th>现金流分类</th><th>依据</th><th>置信</th><th>来源</th></tr></thead>
-        <tbody>{''.join(trs)}</tbody></table></div>
-        <p style='margin-top:14px'><button class='btn primary' type='submit'>保存修改并学习</button></p>
-      </form>
-    </div>
+    <nav class='result-tabs' aria-label='结果页面分区'>
+      <button type='button' class='result-tab active' data-result-tab='overview'>概览</button>
+      <button type='button' class='result-tab' data-result-tab='charts'>可视化</button>
+      <button type='button' class='result-tab' data-result-tab='review'>逐笔复核 <span>{review_total}</span></button>
+    </nav>
+    <section class='result-panel active' data-result-panel='overview'>
+      {cf_card}
+      <div class='card'><div class='section-head'><div><h3>分类汇总</h3><p class='muted'>先看整体结构，需要时再进入逐笔复核</p></div></div><div class='chips'>{chips}</div>
+      <div class='action-grid'>
+        <a class='btn primary' href='{P}/app/job/{job_id}/export'>导出 Excel</a>
+        <button class='btn' type='button' data-go-review>复核 {review_total} 笔</button>
+        <a class='btn' href='{P}/app/job/{job_id}/ask'>问 AI</a>
+        <a class='btn ghost' href='{P}/app/job/{job_id}/report'>下载报告</a>
+      </div></div>
+    </section>
+    <section class='result-panel' data-result-panel='charts'>{dash}</section>
+    <section class='result-panel' data-result-panel='review'>
+      <div class='card review-card'>
+        <div class='section-head'><div><h3>逐笔复核</h3><p class='muted'>优先查看待确认项目，修改后系统会学习你的判断</p></div><span class='review-counter' data-result-count></span></div>
+        <div class='review-tools'>
+          <label class='search-box'><span>搜索</span><input type='search' data-result-search placeholder='摘要、对方或日期'></label>
+          <div class='filter-group' role='group' aria-label='复核筛选'>
+            <button type='button' class='filter-btn active' data-result-filter='review'>待复核 {review_total}</button>
+            <button type='button' class='filter-btn' data-result-filter='all'>全部 {len(results)}</button>
+          </div>
+        </div>
+        <form method='post'>
+          <div class='table-wrap results-scroll'><table class='tbl results-table'><thead><tr><th>日期</th><th>摘要</th><th>对方</th><th>金额</th><th>现金流分类</th><th>依据</th><th>置信</th><th>来源</th></tr></thead>
+          <tbody>{''.join(trs)}</tbody></table></div>
+          <div class='empty-filter' data-empty-filter hidden>没有符合条件的流水，请更换筛选或关键词。</div>
+          <button class='btn load-more' type='button' data-load-more hidden>再显示 20 笔</button>
+          <div class='save-bar'><span class='muted'>修改分类后记得保存</span><button class='btn primary' type='submit'>保存修改并学习</button></div>
+        </form>
+      </div>
+    </section>
     """
     return app_shell("分类结果", "jobs", body, g.user, _quota())
 
@@ -582,19 +635,24 @@ def ask(job_id):
 def jobs():
     all_jobs = Job.query.filter_by(user_id=g.user.id).order_by(Job.created_at.desc()).all()
     rows = "".join(
-        f"<tr><td>{html.escape(j.filename or '未命名')}</td>"
+        f"<tr><td class='filename-cell'>{html.escape(j.filename or '未命名')}</td>"
         f"<td>{'流水表' if j.type=='table' else '文档'}</td>"
         f"<td>{j.row_count or 0}</td>"
         f"<td><span class='tag tag-{j.status}'>{_status_label(j.status)}</span></td>"
         f"<td>{time.strftime('%Y-%m-%d %H:%M', time.localtime(j.created_at))}</td>"
-        f"<td><a class='btn sm' href='{P}/app/job/{j.id}'>打开</a> "
-        f"<a class='btn sm ghost' href='{P}/app/job/{j.id}/delete' onclick=\"return confirm('确认删除该任务？')\">删除</a></td></tr>"
+        f"<td><div class='row-actions'><a class='btn sm' href='{P}/app/job/{j.id}'>打开</a>"
+        f"<form method='post' action='{P}/app/job/{j.id}/delete' onsubmit=\"return confirm('确认删除该任务？删除后文件与结果无法恢复。')\">"
+        f"<button class='btn sm danger-soft' type='submit'>删除</button></form></div></td></tr>"
         for j in all_jobs
-    ) or "<tr><td colspan='6' class='muted' style='text-align:center;padding:24px'>暂无任务</td></tr>"
+    ) or "<tr><td colspan='6' class='muted empty-row'>暂无任务</td></tr>"
+    cards = "".join(_task_card(j, deletable=True) for j in all_jobs) or (
+        f"<div class='empty-state'><h3>还没有历史任务</h3><p>上传文件开始第一次处理。</p>"
+        f"<a class='btn primary' href='{P}/app/upload'>上传处理</a></div>"
+    )
     body = f"""
-    <div class='page-head'><h1>历史任务</h1><a class='btn primary' href='{P}/app/upload'>+ 上传处理</a></div>
-    <div class='card'><table class='tbl'><thead><tr><th>文件</th><th>类型</th><th>行数</th><th>状态</th><th>时间</th><th></th></tr></thead>
-    <tbody>{rows}</tbody></table></div>
+    <div class='page-head'><div><h1>历史任务</h1><p class='muted'>共 {len(all_jobs)} 个任务，按最新时间排序</p></div><a class='btn primary' href='{P}/app/upload'>上传处理</a></div>
+    <div class='desktop-only card'><div class='table-wrap compact-table'><table class='tbl task-table'><thead><tr><th>文件</th><th>类型</th><th>行数</th><th>状态</th><th>时间</th><th>操作</th></tr></thead><tbody>{rows}</tbody></table></div></div>
+    <div class='mobile-only task-list'>{cards}</div>
     """
     return app_shell("历史任务", "jobs", body, g.user, _quota())
 
