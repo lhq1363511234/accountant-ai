@@ -3,7 +3,8 @@ import re
 import pytest
 
 from main import create_app
-from models import db, User, Job, Usage, current_period
+from models import db, User, Job, Usage, EmailVerification, current_period
+import mailer
 import engine
 
 
@@ -56,14 +57,39 @@ def test_csrf_rejects_post_without_token(app):
     assert "安全令牌" in r.get_data(as_text=True)
 
 
-def test_register_and_dashboard(app):
+def test_register_email_verification_and_dashboard(app, monkeypatch):
+    sent = {}
+    monkeypatch.setattr(mailer, "send_verification_email", lambda email, code: sent.update(email=email, code=code))
     client = app.test_client()
     token = csrf(client, "/account/register")
     r = client.post("/account/register", data={
         "csrf_token": token, "email": "new@example.com", "password": "password123", "company": "测试公司"
-    }, follow_redirects=True)
+    })
+    assert r.status_code == 302 and r.location.endswith("/account/verify-email")
+    assert sent["email"] == "new@example.com" and len(sent["code"]) == 6
+    with app.app_context():
+        assert EmailVerification.query.filter_by(email="new@example.com").count() == 1
+    r = client.post("/account/verify-email", data={"csrf_token": token, "code": sent["code"]}, follow_redirects=True)
     assert r.status_code == 200
     assert "控制台" in r.get_data(as_text=True)
+    with app.app_context():
+        assert User.query.filter_by(email="new@example.com").count() == 1
+        assert EmailVerification.query.filter_by(email="new@example.com").count() == 0
+
+
+def test_email_verification_rejects_wrong_code(app, monkeypatch):
+    monkeypatch.setattr(mailer, "send_verification_email", lambda email, code: None)
+    client = app.test_client()
+    token = csrf(client, "/account/register")
+    client.post("/account/register", data={
+        "csrf_token": token, "email": "wrong@example.com", "password": "password123"
+    })
+    r = client.post("/account/verify-email", data={"csrf_token": token, "code": "000000"})
+    assert r.status_code == 200
+    assert "验证码不正确" in r.get_data(as_text=True)
+    with app.app_context():
+        pending = EmailVerification.query.filter_by(email="wrong@example.com").one()
+        assert pending.attempts == 1
 
 
 def test_user_cannot_open_another_users_job(app):

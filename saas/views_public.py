@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import html
 import time
-from flask import Blueprint, request, redirect, session, render_template_string
+import hashlib
+import hmac
+import secrets
+from flask import Blueprint, request, redirect, session, current_app
 
 import config
-from models import db, User, current_period
+from models import db, User, EmailVerification, current_period
 from theme import public_shell, P
+import mailer
 
 public = Blueprint("public", __name__)
 
@@ -23,6 +27,81 @@ def _current_user():
     if not uid:
         return None
     return db.session.get(User, uid)
+
+
+def _code_hash(email: str, code: str) -> str:
+    message = f"{email}:{code}".encode("utf-8")
+    return hmac.new(config.SECRET_KEY.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
+def _new_code() -> str:
+    return f"{secrets.randbelow(900000) + 100000:06d}"
+
+
+def _mask_email(email: str) -> str:
+    local, _, domain = email.partition("@")
+    if len(local) <= 2:
+        local = local[:1] + "*"
+    else:
+        local = local[:2] + "*" * min(5, len(local) - 2)
+    return f"{local}@{domain}"
+
+
+def _send_registration_code(email: str, password: str, company: str) -> tuple[bool, str]:
+    now = time.time()
+    ip = request.remote_addr or "unknown"
+    recent = EmailVerification.query.filter(
+        EmailVerification.request_ip == ip,
+        EmailVerification.created_at >= now - 3600,
+    ).all()
+    if sum(v.send_count or 0 for v in recent) >= config.EMAIL_VERIFY_MAX_PER_HOUR:
+        return False, "验证码发送次数过多，请一小时后再试"
+
+    pending = EmailVerification.query.filter_by(email=email).order_by(EmailVerification.created_at.desc()).first()
+    if pending and now - (pending.sent_at or 0) < config.EMAIL_VERIFY_RESEND_COOLDOWN:
+        wait = max(1, int(config.EMAIL_VERIFY_RESEND_COOLDOWN - (now - pending.sent_at)))
+        session["pending_email"] = email
+        return False, f"验证码已发送，请 {wait} 秒后再重新发送"
+
+    code = _new_code()
+    draft = User(email=email, company=company, plan=config.DEFAULT_PLAN)
+    draft.set_password(password)
+    try:
+        mailer.send_verification_email(email, code)
+    except Exception:
+        current_app.logger.exception("registration verification email failed for %s", email)
+        return False, "验证码发送失败，请稍后重试"
+
+    if pending:
+        if now - pending.created_at >= 3600:
+            pending.created_at = now
+            pending.send_count = 1
+        else:
+            pending.send_count = (pending.send_count or 0) + 1
+        pending.password_hash = draft.password_hash
+        pending.company = company
+        pending.code_hash = _code_hash(email, code)
+        pending.expires_at = now + config.EMAIL_VERIFY_TTL
+        pending.attempts = 0
+        pending.sent_at = now
+        pending.request_ip = ip
+    else:
+        pending = EmailVerification(
+            email=email,
+            password_hash=draft.password_hash,
+            company=company,
+            code_hash=_code_hash(email, code),
+            expires_at=now + config.EMAIL_VERIFY_TTL,
+            attempts=0,
+            sent_at=now,
+            created_at=now,
+            request_ip=ip,
+            send_count=1,
+        )
+        db.session.add(pending)
+    db.session.commit()
+    session["pending_email"] = email
+    return True, ""
 
 
 @public.route("/")
@@ -115,41 +194,130 @@ def register():
     if _current_user():
         return redirect(f"{P}/app")
     msg = ""
+    values = {"email": "", "company": ""}
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         pw = request.form.get("password") or ""
-        company = (request.form.get("company") or "").strip()
-        if not email or "@" not in email:
+        company = (request.form.get("company") or "").strip()[:255]
+        values = {"email": email, "company": company}
+        if not email or "@" not in email or len(email) > 255:
             msg = "请输入有效邮箱"
-        elif len(pw) < 6:
-            msg = "密码至少 6 位"
+        elif len(pw) < 8:
+            msg = "密码至少 8 位"
+        elif len(pw) > 128:
+            msg = "密码不能超过 128 位"
         elif db.session.query(User).filter_by(email=email).first():
             msg = "该邮箱已注册，请直接登录"
         else:
-            u = User(email=email, company=company, plan=config.DEFAULT_PLAN)
-            u.set_password(pw)
-            if email in config.ADMIN_EMAILS:
-                u.is_admin = True
-            db.session.add(u)
-            db.session.commit()
-            session.clear()
-            session["uid"] = u.id
-            return redirect(f"{P}/app")
+            sent, msg = _send_registration_code(email, pw, company)
+            if sent:
+                return redirect(f"{P}/verify-email")
     err = f"<div class='err'>{html.escape(msg)}</div>" if msg else ""
     body = f"""
 <div class='auth'><div class='card'>
-  <h1>创建账号</h1><p class='muted'>免费版每月 {config.PLANS['free']['rows_per_month']} 行额度，立即可用。</p>
+  <h1>创建账号</h1><p class='muted'>完成邮箱验证后即可使用，每月免费 {config.PLANS['free']['rows_per_month']} 行。</p>
   {err}
   <form method='post'>
-    <label>邮箱</label><input type='email' name='email' required autofocus placeholder='you@company.com'>
-    <label>公司名称（选填）</label><input type='text' name='company' placeholder='XX 有限公司'>
-    <label>密码</label><input type='password' name='password' required placeholder='至少 6 位'>
-    <div style='margin-top:18px'><button class='btn primary block' type='submit'>免费注册</button></div>
+    <label>工作邮箱</label><input type='email' name='email' required autofocus autocomplete='email' value='{html.escape(values['email'], quote=True)}' placeholder='you@company.com'>
+    <p class='field-help'>我们会向这个邮箱发送 6 位验证码。</p>
+    <label>公司名称（选填）</label><input type='text' name='company' autocomplete='organization' value='{html.escape(values['company'], quote=True)}' placeholder='XX 有限公司'>
+    <label>密码</label><input type='password' name='password' required minlength='8' maxlength='128' autocomplete='new-password' placeholder='至少 8 位'>
+    <div style='margin-top:18px'><button class='btn primary block' type='submit'>发送验证码</button></div>
   </form>
   <p class='muted' style='margin-top:16px;text-align:center'>已有账号？<a href='{P}/login'>登录</a></p>
 </div></div>
 """
     return public_shell(f"注册 · {config.SITE_NAME}", body)
+
+
+@public.route("/verify-email", methods=["GET", "POST"])
+def verify_email():
+    if _current_user():
+        return redirect(f"{P}/app")
+    email = (session.get("pending_email") or "").strip().lower()
+    if not email:
+        return redirect(f"{P}/register")
+    msg = ""
+    if request.method == "POST":
+        code = (request.form.get("code") or "").strip()
+        pending = EmailVerification.query.filter_by(email=email).order_by(EmailVerification.created_at.desc()).first()
+        now = time.time()
+        if not pending:
+            msg = "验证信息不存在，请重新注册"
+        elif pending.expires_at < now:
+            msg = "验证码已过期，请重新发送"
+        elif pending.attempts >= config.EMAIL_VERIFY_MAX_ATTEMPTS:
+            msg = "验证码尝试次数过多，请重新发送"
+        elif not hmac.compare_digest(pending.code_hash, _code_hash(email, code)):
+            pending.attempts = (pending.attempts or 0) + 1
+            db.session.commit()
+            remaining = max(0, config.EMAIL_VERIFY_MAX_ATTEMPTS - pending.attempts)
+            msg = f"验证码不正确，还可尝试 {remaining} 次"
+        elif User.query.filter_by(email=email).first():
+            EmailVerification.query.filter_by(email=email).delete()
+            db.session.commit()
+            msg = "该邮箱已注册，请直接登录"
+        else:
+            user = User(email=email, company=pending.company or "", plan=config.DEFAULT_PLAN)
+            user.password_hash = pending.password_hash
+            if email in config.ADMIN_EMAILS:
+                user.is_admin = True
+            db.session.add(user)
+            EmailVerification.query.filter_by(email=email).delete()
+            db.session.commit()
+            session.clear()
+            session["uid"] = user.id
+            return redirect(f"{P}/app")
+    err = f"<div class='err'>{html.escape(msg)}</div>" if msg else ""
+    body = f"""
+<div class='auth'><div class='card verify-card'>
+  <div class='verify-icon'>@</div><h1>验证邮箱</h1>
+  <p class='muted'>6 位验证码已发送到 <strong>{html.escape(_mask_email(email))}</strong>，{config.EMAIL_VERIFY_TTL // 60} 分钟内有效。</p>
+  {err}
+  <form method='post'>
+    <label>邮箱验证码</label>
+    <input class='otp-input' type='text' name='code' required autofocus inputmode='numeric' pattern='[0-9]{{6}}' maxlength='6' autocomplete='one-time-code' placeholder='000000'>
+    <div style='margin-top:18px'><button class='btn primary block' type='submit'>验证并创建账号</button></div>
+  </form>
+  <div class='verify-actions'>
+    <form method='post' action='{P}/resend-code'><button class='btn ghost' type='submit'>重新发送验证码</button></form>
+    <a class='btn ghost' href='{P}/register'>更换邮箱</a>
+  </div>
+</div></div>
+"""
+    return public_shell(f"验证邮箱 · {config.SITE_NAME}", body)
+
+
+@public.route("/resend-code", methods=["POST"])
+def resend_code():
+    if _current_user():
+        return redirect(f"{P}/app")
+    email = (session.get("pending_email") or "").strip().lower()
+    pending = EmailVerification.query.filter_by(email=email).order_by(EmailVerification.created_at.desc()).first() if email else None
+    if not pending:
+        return redirect(f"{P}/register")
+    now = time.time()
+    if now - (pending.sent_at or 0) < config.EMAIL_VERIFY_RESEND_COOLDOWN:
+        return redirect(f"{P}/verify-email")
+    if pending.send_count >= config.EMAIL_VERIFY_MAX_PER_HOUR and now - pending.created_at < 3600:
+        return redirect(f"{P}/verify-email")
+    code = _new_code()
+    try:
+        mailer.send_verification_email(email, code)
+    except Exception:
+        current_app.logger.exception("resend verification email failed for %s", email)
+        return redirect(f"{P}/verify-email")
+    if now - pending.created_at >= 3600:
+        pending.created_at = now
+        pending.send_count = 1
+    else:
+        pending.send_count = (pending.send_count or 0) + 1
+    pending.code_hash = _code_hash(email, code)
+    pending.expires_at = now + config.EMAIL_VERIFY_TTL
+    pending.attempts = 0
+    pending.sent_at = now
+    db.session.commit()
+    return redirect(f"{P}/verify-email")
 
 
 @public.route("/login", methods=["GET", "POST"])

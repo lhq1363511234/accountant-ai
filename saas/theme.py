@@ -177,6 +177,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .auth{max-width:420px;margin:48px auto}
 .auth .card{padding:32px}
 .auth h1{font-size:24px;margin:0 0 6px}
+.field-help{font-size:12px!important;color:var(--muted);margin:-4px 0 10px!important}.verify-card{text-align:center}.verify-card form{text-align:left}.verify-icon{width:48px;height:48px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;border-radius:14px;background:var(--brand-soft);color:var(--brand2);font-size:24px;font-weight:800}.otp-input{text-align:center;letter-spacing:8px;font-size:24px;font-weight:800}.verify-actions{display:flex;justify-content:center;gap:8px;margin-top:12px;flex-wrap:wrap}.verify-actions form{margin:0}.verify-actions .btn{font-size:13px}
 /* App shell */
 .app{display:flex;min-height:calc(100vh - 64px)}
 .side{width:230px;flex:none;background:#fff;border-right:1px solid var(--line);padding:20px 14px}

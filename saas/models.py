@@ -97,3 +97,19 @@ class Order(db.Model):
     pay_method = db.Column(db.String(20), default="")      # wechat | alipay | manual
     created_at = db.Column(db.Float, default=now_ts)
     paid_at = db.Column(db.Float, default=0)
+
+
+class EmailVerification(db.Model):
+    """注册邮箱验证码；只保存摘要，不保存明文验证码。"""
+    __tablename__ = "email_verifications"
+    id = db.Column(db.String(16), primary_key=True, default=lambda: gen_id(16))
+    email = db.Column(db.String(255), nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    company = db.Column(db.String(255), default="")
+    code_hash = db.Column(db.String(64), nullable=False)
+    expires_at = db.Column(db.Float, nullable=False, index=True)
+    attempts = db.Column(db.Integer, default=0)
+    sent_at = db.Column(db.Float, default=now_ts)
+    created_at = db.Column(db.Float, default=now_ts, index=True)
+    request_ip = db.Column(db.String(64), default="", index=True)
+    send_count = db.Column(db.Integer, default=1)

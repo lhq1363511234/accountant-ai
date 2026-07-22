@@ -51,6 +51,14 @@ ALLOWED_SUFFIXES = (".xlsx", ".xlsm", ".xls", ".csv", ".txt", ".md", ".docx", ".
 # 站点信息（落地页用）
 SITE_NAME = os.getenv("SITE_NAME", "现金流 AI")
 SITE_TAGLINE = "银行流水一键生成现金流量表分类"
+
+# 注册邮箱验证：通过 toolkit SMTP Console 的内部 API 发信，密钥不进入业务代码。
+MAIL_API_URL = os.getenv("MAIL_API_URL", "http://127.0.0.1:18430/api/send").strip()
+MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", SITE_NAME).strip()
+EMAIL_VERIFY_TTL = int(os.getenv("EMAIL_VERIFY_TTL", "600"))
+EMAIL_VERIFY_RESEND_COOLDOWN = int(os.getenv("EMAIL_VERIFY_RESEND_COOLDOWN", "60"))
+EMAIL_VERIFY_MAX_ATTEMPTS = int(os.getenv("EMAIL_VERIFY_MAX_ATTEMPTS", "5"))
+EMAIL_VERIFY_MAX_PER_HOUR = int(os.getenv("EMAIL_VERIFY_MAX_PER_HOUR", "5"))
 SITE_BASE_PATH = "/account"   # nginx 反代前缀
 
 # 管理员邮箱（注册后自动成为管理员）
